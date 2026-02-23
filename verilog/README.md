@@ -1,35 +1,37 @@
-# Neuro-Edge Hardware Modules (Verilog)
+# Neuro-Edge Hardware Modules (SystemVerilog)
 
-This directory contains the RTL implementation of the digital hardware surrounding the ReRAM crossbar.
+This directory contains the synthesisable RTL implementation for the Neuro-Edge ReRAM Accelerator, now optimized for the **Xilinx Versal ACAP** platform.
 
-## Modules
+## Architecture
 
-### 1. Spike Encoder (`spike_encoder.v`)
-- **Function**: Converts multi-bit input rates (weights/activations) into a Poisson spike train.
-- **Implementation**: Uses a 16-bit Galois LFSR as a pseudo-random number generator. A spike is generated in a cycle if the LFSR value is less than the target `rate`.
-- **Hardware Mapping**: Maps to the row-driver circuitry that applies voltage pulses to the crossbar.
+The hardware follows a streaming neuromorphic architecture where multi-bit inputs are encoded into stochastic spike trains, processed by a memristive crossbar (emulated in logic for this release), and accumulated for class inference.
 
-### 2. Crossbar Controller (`crossbar_controller.v`)
-- **Function**: Orchestrates the multi-cycle integration process.
-- **FSM States**:
-  - `S_IDLE`: Waiting for `start` signal.
-  - `S_CLEAR`: Resets the bitline accumulators.
-  - `S_INTEGRATE`: Drives the rows for `TIMESTEPS` cycles.
-  - `S_SAMPLE`: Triggers the final readout sampling.
-  - `S_DONE`: Signals completion.
+### Modules
 
-### 3. Accumulator (`accumulator.v`)
-- **Function**: Sums the current pulses (or digitised spikes) on each bitline over the integration period.
-- **Parameters**: 
-  - `ACC_WIDTH`: Internal bit-width to prevent overflow (e.g., 16-bit for 50-200 timesteps).
-  - `COLS`: Number of parallel bitlines.
-- **Hardware Mapping**: Represents the integrate-and-fire or ADC-based readout at the bottom of the crossbar columns.
+1. **Top-Level Wrapper ([top_neuro_edge.sv](./top_neuro_edge.sv))**
+   - Integrates the full pipeline: Encoder -> Crossbar -> Accumulator.
+   - Provides a standard AXI-Stream compatible interface for Versal integration.
 
-## Simulation & Synthesis
-These modules are written in synthesisable Verilog-2001 and are designed for FPGA or ASIC implementation.
+2. **Spike Encoder ([spike_encoder.sv](./spike_encoder.sv))**
+   - Converts 8-bit rates into Poisson spike trains using a 16-bit Galois LFSR.
 
-| Module | Resource Estimate |
+3. **Crossbar Controller ([crossbar_controller.sv](./crossbar_controller.sv))**
+   - Manages weight loading and multi-cycle vector-matrix multiplication (VMM).
+
+4. **Accumulator ([accumulator.sv](./accumulator.sv))**
+   - 32-bit registers to sum firing events over the integration window (e.g., 50-200ms).
+
+## Versal Implementation
+
+Target Device: **Xilinx Versal Prime/AI Core** (`xcvc1902`).
+
+### Synthesis Estimates (per 32x10 core)
+| Resource | Multi-Cycle VMM |
 | --- | --- |
-| `spike_encoder` | ~20 LUTs / 17 FFs |
-| `crossbar_controller` | ~15 LUTs / 12 FFs |
-| `accumulator` | ~10 LUTs per bitline |
+| **LUT** | ~450 |
+| **FF** | ~320 |
+| **DSP** | 0 (Purely logic-based) |
+| **Clock** | 250 MHz (Target) |
+
+### Usage
+Run the [versal_synth.tcl](./versal_synth.tcl) script in Vivado to generate the bitstream or export the hardware platform.

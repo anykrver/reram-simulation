@@ -1,6 +1,9 @@
 # Neuro-Edge ReRAM Simulator
 
-Research-grade simulation framework for **in-memory computing** using ReRAM crossbars: ideal and non-ideal models, SNN integration, energy estimation, and a Streamlit dashboard.
+Research-grade simulation framework for **in-memory computing** using ReRAM crossbars: ideal and non-ideal models, SNN integration, energy estimation, and a Streamlit-Wasm dashboard.
+
+[![Live Dashboard](https://img.shields.io/badge/Live-Dashboard-00F0FF?style=for-the-badge&logo=vercel)](https://reram-simulation-main.vercel.app)
+[![Hardware Target](https://img.shields.io/badge/Versal-Ready-orange?style=for-the-badge&logo=xilinx)](./verilog)
 
 ---
 
@@ -8,20 +11,21 @@ Research-grade simulation framework for **in-memory computing** using ReRAM cros
 
 Neuro-Edge ReRAM Simulator models resistive crossbar arrays used for matrix-vector multiplication in place: voltages \(V\) on rows, conductance \(G\) at cells, currents \(I = V \times G\) on columns. It supports:
 
+- **🚀 Live View**: Web-based [Silicon Lab Console](https://reram-simulation-main.vercel.app) (Zero-install via stlite).
 - **Ideal crossbar**: Pure matrix-vector multiplication.
 - **Non-ideal modeling**: Accounts for noise, IR drop, variability, and quantization.
 - **SNN Integration**: Rate-coded spiking neural networks using Poisson encoding and LIF neurons.
 - **Training**: Surrogate-gradient based training achieved **~80% MNIST accuracy** on a single-layer crossbar.
-- **Hardware (RTL)**: Functional Verilog modules for on-chip spike encoding (LFSR) and multi-cycle integration control.
+- **Hardware (Xilinx Versal)**: Synthesisable SystemVerilog modules with a [Top-Level Wrapper](./verilog/top_neuro_edge.sv).
 - **Energy Model**: Theoretical estimation based on \(E = V^2 \times G \times t\).
 
 ---
 
-## Installation
+## Installation (Local Tooling)
 
 ```bash
-git clone https://github.com/your-username/neuro-edge-reram-simulator.git
-cd neuro-edge-reram-simulator
+git clone https://github.com/anykrver/reram-simulation.git
+cd reram-simulation
 
 python -m venv venv
 # Windows: venv\Scripts\activate

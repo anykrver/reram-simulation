@@ -1,0 +1,10 @@
+.git
+venv
+.venv
+node_modules
+.vercel
+public
+tests
+docs
+experiments/*.npy
+verilog/vivado_project
