@@ -34,4 +34,6 @@ Target Device: **Xilinx Versal Prime/AI Core** (`xcvc1902`).
 | **Clock** | 250 MHz (Target) |
 
 ### Usage
-Run the [versal_synth.tcl](./versal_synth.tcl) script in Vivado to generate the bitstream or export the hardware platform.
+1. Use the [versal_synth.tcl](./versal_synth.tcl) script in Vivado.
+2. The [versal_pins.xdc](./versal_pins.xdc) template provides example clock and reset constraints for Versal ACAP devices.
+3. Export the hardware platform (.xsa) for Vitis integration.
