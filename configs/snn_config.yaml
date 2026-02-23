@@ -1,0 +1,10 @@
+# SNN: spike encoding, neuron params, timesteps
+encoding:
+  type: poisson
+  max_rate: 100.0
+neuron:
+  threshold: 1.0
+  leak: 0.99
+  reset: 0.0
+timesteps: 100
+seed: 42

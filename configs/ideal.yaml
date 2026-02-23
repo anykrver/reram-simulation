@@ -1,0 +1,6 @@
+# Ideal crossbar: no noise, no IR drop, no variability
+crossbar:
+  rows: 64
+  cols: 64
+  precision: float32
+seed: 42
