@@ -1,14 +1,14 @@
-[![Live Dashboard](https://img.shields.io/badge/Live-Dashboard-00F0FF?style=for-the-badge&logo=vercel)](https://reram-simulation-main.vercel.app)
-[![Dev Dashboard](https://img.shields.io/badge/Dev-Dashboard-A855F7?style=for-the-badge&logo=vercel)](https://reram-simulation-dev.vercel.app)
+[![Live Dashboard](https://img.shields.io/badge/Live-Lab_Console-00F0FF?style=for-the-badge&logo=vercel)](https://reram-simulation-main.vercel.app)
+[![Streamlit App](https://img.shields.io/badge/Streamlit-Cloud-FF4B4B?style=for-the-badge&logo=streamlit)](https://reram-simulation-hfnk8pm6bnjdhgxfp2hpag.streamlit.app/)
 [![Hardware Target](https://img.shields.io/badge/Versal-Ready-orange?style=for-the-badge&logo=xilinx)](./verilog)
 
 ---
 
 ## Overview
 
-Neuro-Edge ReRAM Simulator models resistive crossbar arrays used for matrix-vector multiplication in place: voltages \(V\) on rows, conductance \(G\) at cells, currents \(I = V \times G\) on columns. It supports:
+Neuro-Edge ReRAM Simulator models resistive crossbar arrays used for matrix-vector multiplication in place.
 
-- **🚀 Live View**: Web-based [Silicon Lab Console](https://reram-simulation-main.vercel.app) (Zero-install via stlite).
+- **🚀 Live View**: Native [Streamlit Cloud App](https://reram-simulation-hfnk8pm6bnjdhgxfp2hpag.streamlit.app/) or [Vercel Console](https://reram-simulation-main.vercel.app).
 - **Ideal crossbar**: Pure matrix-vector multiplication.
 - **Non-ideal modeling**: Accounts for noise, IR drop, variability, and quantization.
 - **SNN Integration**: Rate-coded spiking neural networks using Poisson encoding and LIF neurons.
