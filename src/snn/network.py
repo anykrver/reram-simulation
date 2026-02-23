@@ -9,31 +9,34 @@ from .neuron import LIFNeuron
 
 
 class SNNNetwork:
-    """Single-layer SNN that uses a crossbar for dense weight multiplication."""
+    """Multi-layer SNN that uses crossbars for dense weight multiplication."""
 
     def __init__(
         self,
-        input_size: int,
-        output_size: int,
-        crossbar_run: Callable[[np.ndarray], np.ndarray],
+        layer_sizes: list[int],
+        crossbar_runs: list[Callable[[np.ndarray], np.ndarray]],
         encoder: Optional[PoissonEncoder] = None,
-        neuron: Optional[LIFNeuron] = None,
+        neuron_factory: Optional[Callable[[], LIFNeuron]] = None,
         timesteps: int = 100,
     ):
         """
         Args:
-            input_size: Number of input units.
-            output_size: Number of output (LIF) neurons.
-            crossbar_run: Function V -> I (voltages to currents); expects V (timesteps, input_size) or (input_size,).
+            layer_sizes: List of layer dimensions, e.g. [784, 256, 128, 10].
+            crossbar_runs: List of functions V -> I for each weight matrix.
             encoder: Spike encoder; default PoissonEncoder().
-            neuron: LIF layer; default LIFNeuron().
+            neuron_factory: Function that returns a new LIFNeuron; default LIFNeuron().
             timesteps: Simulation timesteps.
         """
-        self.input_size = input_size
-        self.output_size = output_size
-        self.crossbar_run = crossbar_run
+        if len(crossbar_runs) != len(layer_sizes) - 1:
+            raise ValueError(f"Expected {len(layer_sizes)-1} crossbar_runs, got {len(crossbar_runs)}")
+
+        self.layer_sizes = layer_sizes
+        self.crossbar_runs = crossbar_runs
         self.encoder = encoder or PoissonEncoder()
-        self.neuron = neuron or LIFNeuron()
+        
+        # Create a layer of neurons for each output stage
+        nf = neuron_factory or (lambda: LIFNeuron())
+        self.neurons = [nf() for _ in range(len(layer_sizes) - 1)]
         self.timesteps = timesteps
 
     def forward(
@@ -42,29 +45,44 @@ class SNNNetwork:
         seed: Optional[int] = None,
     ) -> tuple[np.ndarray, np.ndarray]:
         """
-        Run SNN: encode x -> spikes, crossbar(V) -> I, LIF -> output spikes.
+        Run SNN: encode x -> spikes, pass through multiple stages of crossbars and LIF neurons.
 
         Args:
-            x: Input (input_size,) normalized to [0,1].
+            x: Input (layer_sizes[0],) normalized to [0,1].
             seed: Encoder RNG seed.
 
         Returns:
-            output_spikes: (timesteps, output_size).
-            total_spikes: (output_size,) per-neuron spike counts.
+            output_spikes: (timesteps, layer_sizes[-1]).
+            total_spikes: (layer_sizes[-1],) per-neuron spike counts.
         """
         x = np.asarray(x).ravel()
-        if x.size != self.input_size:
-            raise ValueError(f"x size {x.size} != input_size {self.input_size}")
+        if x.size != self.layer_sizes[0]:
+            raise ValueError(f"x size {x.size} != input_size {self.layer_sizes[0]}")
+        
         spikes_in = self.encoder.encode(x, self.timesteps, seed=seed)
-        output_spikes = np.zeros((self.timesteps, self.output_size), dtype=np.float32)
-        membrane = None
+        output_spikes = np.zeros((self.timesteps, self.layer_sizes[-1]), dtype=np.float32)
+        
+        # States for each neuron layer
+        membranes = [None] * len(self.neurons)
+        
         for t in range(self.timesteps):
-            V = spikes_in[t]
-            I = self.crossbar_run(V)
-            I = np.asarray(I).ravel()
-            if I.size != self.output_size:
-                I = np.resize(I, self.output_size)
-            spk, membrane = self.neuron.step(I, membrane)
-            output_spikes[t] = spk
+            curr_spikes = spikes_in[t]
+            
+            for i, (run_cb, neuron) in enumerate(zip(self.crossbar_runs, self.neurons)):
+                V = curr_spikes
+                I = run_cb(V)
+                I = np.asarray(I).ravel()
+                
+                # Resize if crossbar output shape is different (e.g. non-ideal effects)
+                target_size = self.layer_sizes[i + 1]
+                if I.size != target_size:
+                    I = np.resize(I, target_size)
+                
+                spk, membrane = neuron.step(I, membranes[i])
+                membranes[i] = membrane
+                curr_spikes = spk
+            
+            output_spikes[t] = curr_spikes
+            
         total_spikes = output_spikes.sum(axis=0)
         return output_spikes, total_spikes

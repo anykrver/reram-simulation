@@ -38,30 +38,27 @@ def _one_hot(y: np.ndarray, n_classes: int) -> np.ndarray:
 
 class SNNTrainer:
     """
-    Trains crossbar conductances G via a rate-coded surrogate gradient.
+    Trains multi-layer crossbar conductances G via rate-coded surrogate gradients and backprop.
 
-    The forward pass computes expected spike rates analytically
-    (mean_rate_in = x * max_rate * dt) and uses I = mean_rate_in @ G as
-    the logit.  The gradient flows exactly through this linear map.
+    The forward pass computes expected spike rates analytically. For hidden layers,
+    we use a ReLU activation as a surrogate for the LIF rate-response function.
+    The final layer output (logits) is used for cross-entropy loss.
 
     Parameters
     ----------
-    n_in:       Number of input neurons (e.g. 784 for MNIST).
-    n_out:      Number of output classes (e.g. 10).
-    lr:         Learning rate for SGD.
-    max_rate:   PoissonEncoder max firing rate (Hz). Used only to scale
-                the analytic mean-rate; must match the encoder used at
-                inference time.
+    layer_sizes: List of layer dimensions, e.g., [784, 256, 128, 10].
+    lr:          Learning rate for SGD.
+    max_rate:    PoissonEncoder max firing rate (Hz).
     timestep_ms: Encoder timestep (ms).
-    timesteps:  Number of SNN timesteps (used to normalise logits).
-    G_max:      Upper bound for conductance clipping (S).
-    seed:       Optional RNG seed for weight initialisation.
+    timesteps:   Number of SNN timesteps (used to normalise logits).
+    G_max:       Upper bound for conductance clipping (S).
+    seed:        Optional RNG seed for weight initialisation.
     """
 
     def __init__(
         self,
-        n_in: int,
-        n_out: int,
+        layer_sizes: list[int] | int = 784,
+        n_out: Optional[int] = None,  # For backward compatibility
         lr: float = 0.01,
         max_rate: float = 100.0,
         timestep_ms: float = 1.0,
@@ -69,139 +66,115 @@ class SNNTrainer:
         G_max: float = 1.0,
         seed: Optional[int] = None,
     ):
-        self.n_in = n_in
-        self.n_out = n_out
+        # Handle backward compatibility: if n_in and n_out are passed as ints
+        if isinstance(layer_sizes, int) and n_out is not None:
+            self.layer_sizes = [layer_sizes, n_out]
+        elif isinstance(layer_sizes, list):
+            self.layer_sizes = layer_sizes
+        else:
+            raise ValueError("layer_sizes must be a list of ints or (n_in, n_out) must be provided")
+
         self.lr = lr
         self.max_rate = max_rate
         self.timestep_ms = timestep_ms
         self.timesteps = timesteps
         self.G_max = G_max
-        self._dt = max_rate * timestep_ms / 1000.0  # firing prob per timestep per unit input
+        self._dt = max_rate * timestep_ms / 1000.0
 
         rng = np.random.default_rng(seed)
-        # Small positive initialisation (conductances ≥ 0)
-        self.G = rng.uniform(0.0, 0.01, (n_in, n_out)).astype(np.float32)
+        self.weights = []
+        for i in range(len(self.layer_sizes) - 1):
+            n_in = self.layer_sizes[i]
+            n_out = self.layer_sizes[i + 1]
+            # Kaiming-ish initialisation for ReLU layers
+            std = np.sqrt(2.0 / n_in)
+            W = rng.normal(0.01, std * 0.1, (n_in, n_out)).astype(np.float32)
+            self.weights.append(np.clip(W, 0.0, G_max))
 
-    # ------------------------------------------------------------------
-    # Public helpers
-    # ------------------------------------------------------------------
+    def get_weights(self) -> list[np.ndarray] | np.ndarray:
+        """Return conductance matrices. Returns a single array if only 1 layer exists."""
+        if len(self.weights) == 1:
+            return self.weights[0].copy()
+        return [W.copy() for W in self.weights]
 
-    def get_weights(self) -> np.ndarray:
-        """Return current conductance matrix G (n_in, n_out)."""
-        return self.G.copy()
-
-    def set_weights(self, G: np.ndarray) -> None:
-        """Set conductance matrix; projected to [0, G_max]."""
-        G = np.asarray(G, dtype=np.float32)
-        if G.shape != (self.n_in, self.n_out):
-            raise ValueError(f"Expected G shape ({self.n_in}, {self.n_out}), got {G.shape}")
-        self.G = np.clip(G, 0.0, self.G_max)
-
-    # ------------------------------------------------------------------
-    # Forward
-    # ------------------------------------------------------------------
+    def set_weights(self, weights: list[np.ndarray] | np.ndarray) -> None:
+        """Set weights; projected to [0, G_max]."""
+        if isinstance(weights, np.ndarray):
+            weights = [weights]
+        
+        if len(weights) != len(self.weights):
+            raise ValueError(f"Expected {len(self.weights)} layers, got {len(weights)}")
+        
+        for i, W in enumerate(weights):
+            if W.shape != self.weights[i].shape:
+                raise ValueError(f"Layer {i} shape mismatch: {W.shape} vs {self.weights[i].shape}")
+            self.weights[i] = np.clip(W, 0.0, self.G_max).astype(np.float32)
 
     def mean_rate_in(self, X: np.ndarray) -> np.ndarray:
-        """
-        Compute analytic mean input spike rate for a batch.
-
-        Parameters
-        ----------
-        X : (N, n_in) float32 in [0, 1].
-
-        Returns
-        -------
-        rates : (N, n_in) float32.
-        """
+        """Compute analytic mean input spike rate for the first layer."""
         X = np.asarray(X, dtype=np.float32)
         return np.clip(X, 0.0, 1.0) * self._dt * self.timesteps
 
-    def forward(self, X: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
+    def forward(self, X: np.ndarray) -> tuple[np.ndarray, list[np.ndarray]]:
         """
-        Rate-coded forward pass.
-
-        Parameters
-        ----------
-        X : (N, n_in) batch of inputs in [0, 1].
-
-        Returns
-        -------
-        logits       : (N, n_out) — I = mean_rate_in @ G.
-        mean_rates   : (N, n_in) — cached for gradient.
+        Multi-layer forward pass with ReLU activations (surrogate).
+        Returns final logits and activations for all layers.
         """
-        rates = self.mean_rate_in(X)
-        logits = rates @ self.G          # (N, n_out)
-        return logits, rates
-
-    # ------------------------------------------------------------------
-    # Loss and gradient
-    # ------------------------------------------------------------------
+        activations = [self.mean_rate_in(X)]
+        curr = activations[0]
+        
+        for i, W in enumerate(self.weights):
+            curr = curr @ W
+            if i < len(self.weights) - 1:
+                # ReLU surrogate for hidden layers
+                curr = np.maximum(curr, 0.0)
+            activations.append(curr)
+            
+        return activations[-1], activations
 
     def loss_and_grad(
         self,
         logits: np.ndarray,
-        mean_rates: np.ndarray,
+        activations: list[np.ndarray],
         y: np.ndarray,
-    ) -> Tuple[float, np.ndarray]:
-        """
-        Cross-entropy loss and gradient dL/dG.
-
-        Parameters
-        ----------
-        logits      : (N, n_out).
-        mean_rates  : (N, n_in).
-        y           : (N,) integer labels.
-
-        Returns
-        -------
-        loss : scalar float.
-        dG   : (n_in, n_out) gradient.
-        """
+    ) -> tuple[float, list[np.ndarray]]:
+        """Multi-layer cross-entropy loss and backpropagation."""
         N = logits.shape[0]
-        probs = _softmax(logits)                     # (N, n_out)
-        oh = _one_hot(y, self.n_out)                 # (N, n_out)
-        # Cross-entropy
+        probs = _softmax(logits)
+        oh = _one_hot(y, self.layer_sizes[-1])
+        
+        # Cross-entropy loss
         eps = 1e-9
         loss = -float(np.mean(np.sum(oh * np.log(probs + eps), axis=1)))
-        delta = (probs - oh) / N                     # (N, n_out)
-        dG = mean_rates.T @ delta                    # (n_in, n_out)
-        return loss, dG.astype(np.float32)
+        
+        # Backprop
+        grads = []
+        delta = (probs - oh) / N  # Error at output
+        
+        for i in range(len(self.weights) - 1, -1, -1):
+            W = self.weights[i]
+            A_prev = activations[i]
+            
+            # dL/dW = A_prev^T @ delta
+            dW = A_prev.T @ delta
+            grads.insert(0, dW.astype(np.float32))
+            
+            if i > 0:
+                # delta_prev = (delta @ W^T) * derivative_of_activation(A_prev)
+                # derivative of ReLU is 1 if A > 0 else 0
+                delta = (delta @ W.T) * (A_prev > 0)
+                
+        return loss, grads
 
-    # ------------------------------------------------------------------
-    # Optimiser step
-    # ------------------------------------------------------------------
+    def step(self, dWs: list[np.ndarray]) -> None:
+        """SGD update + non-negativity + G_max projection."""
+        for i, dW in enumerate(dWs):
+            self.weights[i] -= self.lr * dW
+            np.clip(self.weights[i], 0.0, self.G_max, out=self.weights[i])
 
-    def step(self, dG: np.ndarray) -> None:
-        """
-        SGD update + non-negativity + G_max projection.
-
-        Parameters
-        ----------
-        dG : (n_in, n_out) gradient from loss_and_grad.
-        """
-        self.G -= self.lr * dG
-        np.clip(self.G, 0.0, self.G_max, out=self.G)
-
-    # ------------------------------------------------------------------
-    # Convenience: one full training step
-    # ------------------------------------------------------------------
-
-    def train_batch(
-        self, X: np.ndarray, y: np.ndarray
-    ) -> float:
-        """
-        Forward + loss + backward + weight update for one mini-batch.
-
-        Parameters
-        ----------
-        X : (N, n_in) inputs in [0, 1].
-        y : (N,) integer labels.
-
-        Returns
-        -------
-        loss : scalar cross-entropy loss.
-        """
-        logits, rates = self.forward(X)
-        loss, dG = self.loss_and_grad(logits, rates, y)
-        self.step(dG)
+    def train_batch(self, X: np.ndarray, y: np.ndarray) -> float:
+        """Full forward + backward + update cycle."""
+        logits, activations = self.forward(X)
+        loss, grads = self.loss_and_grad(logits, activations, y)
+        self.step(grads)
         return loss
