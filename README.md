@@ -1,8 +1,5 @@
-# Neuro-Edge ReRAM Simulator
-
-Research-grade simulation framework for **in-memory computing** using ReRAM crossbars: ideal and non-ideal models, SNN integration, energy estimation, and a Streamlit-Wasm dashboard.
-
 [![Live Dashboard](https://img.shields.io/badge/Live-Dashboard-00F0FF?style=for-the-badge&logo=vercel)](https://reram-simulation-main.vercel.app)
+[![Dev Dashboard](https://img.shields.io/badge/Dev-Dashboard-A855F7?style=for-the-badge&logo=vercel)](https://reram-simulation-dev.vercel.app)
 [![Hardware Target](https://img.shields.io/badge/Versal-Ready-orange?style=for-the-badge&logo=xilinx)](./verilog)
 
 ---

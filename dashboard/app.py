@@ -79,6 +79,10 @@ section[data-testid="stSidebar"] {
 """, unsafe_allow_html=True)
 
 # ── Branding ──────────────────────────────────────────────────────────────────
+is_dev = "dev" in str(Path.cwd()) or st.sidebar.toggle("Force Dev Mode", value=False)
+if is_dev:
+    st.warning("🔬 DEVELOPMENT MODE | MLC ENGINE ACTIVE")
+
 st.markdown("""
 <h1>Neuro-Edge Silicon Lab Console</h1>
 <p style='color:#9CA3AF; margin-top:-1rem; font-size:1.1rem;'>

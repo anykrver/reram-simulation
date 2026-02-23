@@ -1,0 +1,10 @@
+{
+    "version": 2,
+    "name": "reram-simulation-dev",
+    "public": true,
+    "git": {
+        "deploymentEnabled": {
+            "dev": true
+        }
+    }
+}
