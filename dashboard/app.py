@@ -108,7 +108,7 @@ use_trained = st.sidebar.checkbox(
     disabled=not _weights_available
 )
 
-auto_play = st.sidebar.toggle("Auto-play Inference", value=False)
+auto_play = st.sidebar.checkbox("Auto-play Inference", value=False)
 play_speed = st.sidebar.slider("Cycle Rate (s)", 0.5, 5.0, 2.0) if auto_play else 2.0
 
 st.sidebar.markdown("---")
@@ -132,7 +132,8 @@ if "evolution_step" not in st.session_state:
     st.session_state.evolution_step = 0.0
 
 # ── Weight Evolution Feature ──────────────────────────────────────────────────
-evolution_mode = st.sidebar.toggle("🔬 Simulate Weight Evolution", value=False)
+# stlite version compat: replace .toggle with .checkbox
+evolution_mode = st.sidebar.checkbox("🔬 Simulate Weight Evolution", value=False)
 if evolution_mode:
     evo_speed = st.sidebar.slider("Learning Rate (Sim)", 0.01, 0.20, 0.05)
     if st.session_state.evolution_step < 1.0:
