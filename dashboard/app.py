@@ -190,15 +190,17 @@ with col_left:
     else:
         G_display = W_init
         
-    fig_heat = px.imshow(
-        G_display,
-        color_continuous_scale="Turbo",
-        labels=dict(x="Column", y="Row", color="G (S)"),
-        aspect="auto"
-    )
+    # Replace px.imshow with go.Heatmap for stlite compatibility
+    fig_heat = go.Figure(data=go.Heatmap(
+        z=G_display,
+        colorscale="Turbo",
+        colorbar=dict(title="G (S)"),
+        hovertemplate="Row: %{y}<br>Col: %{x}<br>G: %{z:.4f} S<extra></extra>"
+    ))
     fig_heat.update_layout(
         margin=dict(l=0, r=0, t=10, b=0),
-        coloraxis_colorbar=dict(title=None),
+        xaxis_title="Column",
+        yaxis_title="Row",
         paper_bgcolor='rgba(0,0,0,0)',
         plot_bgcolor='rgba(0,0,0,0)',
         font_color="#E5E7EB",
@@ -254,10 +256,15 @@ with col_pwr:
     p_base = energy * 1e6
     p_curve = p_base + np.sin(t_curve * 0.5) * (p_base * 0.1)
     
-    fig_pwr = px.line(x=t_curve, y=p_curve, labels={'x': 'Time (ms)', 'y': 'Power (uW)'})
-    fig_pwr.update_traces(line_color="#7C3AED", line_width=3)
+    # Replace px.line with go.Scatter for stlite compatibility
+    fig_pwr = go.Figure(data=go.Scatter(
+        x=t_curve, y=p_curve,
+        mode='lines',
+        line=dict(color="#7C3AED", width=3)
+    ))
     fig_pwr.update_layout(
         margin=dict(l=0, r=0, t=10, b=0),
+        xaxis_title="Time (ms)", yaxis_title="Power (uW)",
         paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)',
         font_color="#E5E7EB",
         xaxis=dict(gridcolor="rgba(255,255,255,0.05)"),
@@ -324,11 +331,15 @@ with col_inf:
             """, unsafe_allow_html=True)
         
         with inf_c2:
+            # Replace px.bar with go.Bar for stlite compatibility
             labels = [str(i) for i in range(10)]
-            fig_bar = px.bar(x=labels, y=t_spikes, labels={'x': 'Class', 'y': 'Firing Rate'})
-            fig_bar.update_traces(marker_color="#00F0FF")
+            fig_bar = go.Figure(data=go.Bar(
+                x=labels, y=t_spikes,
+                marker_color="#00F0FF"
+            ))
             fig_bar.update_layout(
                 height=220, margin=dict(l=0, r=0, t=10, b=0),
+                xaxis_title="Class", yaxis_title="Firing Rate",
                 paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)',
                 font_color="#E5E7EB",
                 xaxis=dict(gridcolor="rgba(255,255,255,0.05)"),
