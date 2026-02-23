@@ -79,7 +79,8 @@ section[data-testid="stSidebar"] {
 """, unsafe_allow_html=True)
 
 # ── Branding ──────────────────────────────────────────────────────────────────
-is_dev = "dev" in str(Path.cwd()) or st.sidebar.toggle("Force Dev Mode", value=False)
+# stlite version compat: replace .toggle with .checkbox
+is_dev = "dev" in str(Path.cwd()) or st.sidebar.checkbox("Force Dev Mode", value=False)
 if is_dev:
     st.warning("🔬 DEVELOPMENT MODE | MLC ENGINE ACTIVE")
 

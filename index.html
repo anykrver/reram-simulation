@@ -64,17 +64,6 @@
     </div>
     <div id="root"></div>
 
-    <script>
-        window.onerror = function (msg, url, lineNo, columnNo, error) {
-            const consoleBox = document.getElementById("error-console");
-            if (consoleBox) {
-                consoleBox.style.display = "block";
-                consoleBox.innerText += `\n[Global Error] ${msg} at ${lineNo}:${columnNo}`;
-            }
-            return false;
-        };
-    </script>
-
     <script src="https://cdn.jsdelivr.net/npm/@stlite/mountable@0.39.0/build/stlite.js"></script>
     <script>
         const statusText = document.getElementById("status-text");
@@ -85,14 +74,17 @@
             if (statusText) statusText.innerText = msg;
         }
 
+        function showError(msg) {
+            if (errConsole) {
+                errConsole.style.display = "block";
+                errConsole.innerText = msg;
+            }
+        }
+
         logStatus("Connecting to Neural Engine...");
 
         if (typeof stlite === 'undefined') {
-            logStatus("Connection Error: stlite library not found.");
-            if (errConsole) {
-                errConsole.style.display = "block";
-                errConsole.innerText = "External JS library (stlite) failed to load. Please check your internet connection.";
-            }
+            showError("External JS library (stlite) failed to load. Please check your connection.");
         } else {
             logStatus("Fetching lab resources...");
             fetch(`./files.json?cb=${Date.now()}`)
@@ -102,33 +94,26 @@
                 })
                 .then((files) => {
                     logStatus("Synapsing (Installing Pyodide)...");
-                    stlite.mount(
+                    return stlite.mount(
                         {
                             requirements: ["numpy", "PyYAML", "plotly", "matplotlib", "pandas"],
                             entrypoint: "dashboard/app.py",
                             files: files,
                         },
                         document.getElementById("root")
-                    ).then(() => {
-                        logStatus("Integration complete.");
-                        setTimeout(() => {
-                            const loader = document.getElementById("loader");
-                            if (loader) loader.style.display = "none";
-                        }, 2000);
-                    }).catch(err => {
-                        logStatus("Mount Error");
-                        if (errConsole) {
-                            errConsole.style.display = "block";
-                            errConsole.innerText = `stlite.mount failed: ${err.message}`;
-                        }
-                    });
+                    );
+                })
+                .then(() => {
+                    logStatus("Integration complete.");
+                    setTimeout(() => {
+                        const loader = document.getElementById("loader");
+                        if (loader) loader.style.display = "none";
+                    }, 1000);
                 })
                 .catch(err => {
-                    logStatus("Resource Error");
-                    if (errConsole) {
-                        errConsole.style.display = "block";
-                        errConsole.innerText = `Fetch failed: ${err.message}`;
-                    }
+                    logStatus("Initialization Error");
+                    showError(`Dashboard error: ${err.message}`);
+                    console.error(err);
                 });
         }
     </script>
