@@ -48,12 +48,12 @@ def main() -> int:
         description="Train SNN on MNIST (rate-coded surrogate gradient)",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
-    parser.add_argument("--epochs",     type=int,   default=50)
-    parser.add_argument("--batch-size", type=int,   default=128)
-    parser.add_argument("--lr",         type=float, default=0.001)
+    parser.add_argument("--epochs",     type=int,   default=10)
+    parser.add_argument("--batch-size", type=int,   default=64)
+    parser.add_argument("--lr",         type=float, default=0.01)
     parser.add_argument("--max-train",  type=int,   default=5000)
     parser.add_argument("--max-test",   type=int,   default=1000)
-    parser.add_argument("--timesteps",  type=int,   default=100)
+    parser.add_argument("--timesteps",  type=int,   default=50)
     parser.add_argument("--out",        type=str,
                         default=str(_ROOT / "experiments" / "trained_weights.npy"))
     parser.add_argument("--seed",       type=int,   default=42)
@@ -70,21 +70,14 @@ def main() -> int:
     X_train, y_train, X_test, y_test, n_pixels = load_mnist_from_path(
         path, max_train=args.max_train, max_test=args.max_test
     )
-    
-    # -- Input Normalization (Z-Score) ----------------------------------
-    print("Normalizing input (z-score) ...")
-    mean, std = X_train.mean(), X_train.std()
-    X_train = (X_train - mean) / (std + 1e-8)
-    X_test = (X_test - mean) / (std + 1e-8)
-    
     print(f"  Train: {X_train.shape}   Test: {X_test.shape}   Pixels: {n_pixels}")
 
     N_CLASSES = int(y_train.max()) + 1   # 10 for MNIST
 
     # -- Create trainer ------------------------------------------------
-    # Multi-layer architecture: 784 -> 256 -> 128 -> 10
     trainer = SNNTrainer(
-        layer_sizes=[n_pixels, 256, 128, N_CLASSES],
+        n_in=n_pixels,
+        n_out=N_CLASSES,
         lr=args.lr,
         max_rate=100.0,
         timestep_ms=1.0,
@@ -109,11 +102,6 @@ def main() -> int:
         idx = rng.permutation(n_train)
         X_shuf, y_shuf = X_train[idx], y_train[idx]
 
-        # Learning Rate Scheduler: Reduce LR by gamma=0.1 every 20 epochs
-        if epoch > 1 and (epoch - 1) % 20 == 0:
-            trainer.lr *= 0.1
-            print(f"  [Scheduler] Reducing learning rate to {trainer.lr:.6f}")
-
         epoch_loss = 0.0
         n_batches = 0
         for start in range(0, n_train, args.batch_size):
@@ -136,12 +124,7 @@ def main() -> int:
     # -- Save weights --------------------------------------------------
     G_final = trainer.get_weights()
     save_weights(G_final, args.out)
-    
-    if isinstance(G_final, list):
-        shapes = [W.shape for W in G_final]
-        print(f"\nWeights saved -> {args.out}  layers={len(G_final)} shapes={shapes}")
-    else:
-        print(f"\nWeights saved -> {args.out}  shape={G_final.shape}")
+    print(f"\nWeights saved -> {args.out}  shape={G_final.shape}")
     print(f"Final test accuracy: {evaluate(trainer, X_test, y_test):.4f}")
     print("Done.")
 

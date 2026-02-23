@@ -177,12 +177,8 @@ with col_left:
     W_init = np.random.rand(rows, cols).astype(np.float32) * 0.05
     
     if evolution_mode and _weights_available:
-        # Load trained G (list of layers)
-        G_layers = load_weights(str(_WEIGHTS_PATH))
-        # Selector for which layer to view in the heatmap
-        layer_to_view = st.sidebar.selectbox("Heatmap Layer", range(len(G_layers))) if isinstance(G_layers, list) else 0
-        G_trained_full = G_layers[layer_to_view] if isinstance(G_layers, list) else G_layers
-        
+        # Load trained G (or part of it if size mismatch)
+        G_trained_full = load_weights(str(_WEIGHTS_PATH))
         # Resize/crop to fit current UI sliders
         G_target = np.zeros((rows, cols))
         r_f, c_f = min(rows, G_trained_full.shape[0]), min(cols, G_trained_full.shape[1])
@@ -213,48 +209,25 @@ with col_left:
 
 with col_right:
     st.subheader("⚡ Spike Event Analyzer")
-    # Small demo run: 2-layer subset for the raster
-    n_in_s, n_h_s, n_out_s = min(32, rows), 16, min(10, cols)
+    # Small demo run
+    n_in_s, n_out_s = min(32, rows), min(10, cols)
+    cb_s = IdealCrossbar(n_in_s, n_out_s)
     
-    # Use current evolving weights for the demo raster
-    W_s1_init = np.maximum(np.random.randn(n_in_s, n_h_s) * 0.1, 0).astype(np.float32)
-    W_s2_init = np.maximum(np.random.randn(n_h_s, n_out_s) * 0.1, 0).astype(np.float32)
-    
+    # Use current evolving weights for the demo raster too
+    W_s_init = np.maximum(np.random.randn(n_in_s, n_out_s) * 0.1, 0)
     if evolution_mode and _weights_available:
-        G_tr = load_weights(str(_WEIGHTS_PATH))
-        if isinstance(G_tr, list) and len(G_tr) >= 2:
-            W_s1_tgt = np.zeros((n_in_s, n_h_s), dtype=np.float32)
-            W_s2_tgt = np.zeros((n_h_s, n_out_s), dtype=np.float32)
-            # Crop
-            r1, c1 = min(n_in_s, G_tr[0].shape[0]), min(n_h_s, G_tr[0].shape[1])
-            W_s1_tgt[:r1, :c1] = G_tr[0][:r1, :c1]
-            r2, c2 = min(n_h_s, G_tr[1].shape[0]), min(n_out_s, G_tr[1].shape[1])
-            W_s2_tgt[:r2, :c2] = G_tr[1][:r2, :c2]
-            
-            W_s1 = (1 - st.session_state.evolution_step) * W_s1_init + st.session_state.evolution_step * W_s1_tgt
-            W_s2 = (1 - st.session_state.evolution_step) * W_s2_init + st.session_state.evolution_step * W_s2_tgt
-            weights_s = [W_s1, W_s2]
-            l_sizes_s = [n_in_s, n_h_s, n_out_s]
-        else:
-            weights_s = [(1 - st.session_state.evolution_step) * W_s1_init + st.session_state.evolution_step * W_s1_init]
-            l_sizes_s = [n_in_s, n_h_s]
+        G_tr_s = load_weights(str(_WEIGHTS_PATH))
+        # Match dimensions for the small subset
+        W_s_target = np.zeros((n_in_s, n_out_s))
+        r_s, c_s = min(n_in_s, G_tr_s.shape[0]), min(n_out_s, G_tr_s.shape[1])
+        W_s_target[:r_s, :c_s] = G_tr_s[:r_s, :c_s]
+        W_s = (1 - st.session_state.evolution_step) * W_s_init + st.session_state.evolution_step * W_s_target
     else:
-        weights_s = [W_s1_init]
-        l_sizes_s = [n_in_s, n_h_s]
+        W_s = W_s_init
         
-    cbs_s = []
-    for W in weights_s:
-        cb = IdealCrossbar(W.shape[0], W.shape[1])
-        cb.set_conductance(W)
-        cbs_s.append(cb)
-        
+    cb_s.set_conductance(W_s)
     xs = np.random.rand(n_in_s).astype(np.float32)
-    sp_out, _ = SNNNetwork(
-        layer_sizes=l_sizes_s,
-        crossbar_runs=[cb.run for cb in cbs_s],
-        encoder=PoissonEncoder(50.0),
-        timesteps=timesteps
-    ).forward(xs, seed=42)
+    sp_out, _ = SNNNetwork(n_in_s, n_out_s, cb_s.run, encoder=PoissonEncoder(50.0), timesteps=timesteps).forward(xs, seed=42)
     
     t_coords, n_coords = np.where(sp_out > 0)
     fig_raster = go.Figure()
@@ -308,46 +281,24 @@ with col_inf:
             st.session_state.mnist_data = (X_te, y_te, p_in)
             st.rerun()
     else:
-        X_test_raw, y_test, p_pixels = st.session_state.mnist_data
+        X_test, y_test, p_pixels = st.session_state.mnist_data
         
-        # Apply Z-score normalization (matching trainer)
-        X_test = (X_test_raw - X_test_raw.mean()) / (X_test_raw.std() + 1e-8)
-        
-        # Load weights and configure multi-layer SNN
-        l_sizes = [p_pixels, 256, 128, 10]
-        weights = []
-        
+        # In evolution mode, we use the evolving weights even for the main inference showcase
         if evolution_mode and _weights_available:
             alpha = st.session_state.evolution_step
-            G_trained = load_weights(str(_WEIGHTS_PATH))
-            if not isinstance(G_trained, list): G_trained = [G_trained]
-            
-            for i in range(len(l_sizes) - 1):
-                ni, no = l_sizes[i], l_sizes[i+1]
-                Wi = np.maximum(np.random.randn(ni, no) * 0.01, 0).astype(np.float32)
-                if i < len(G_trained):
-                    # Interpolate
-                    Wi = (1 - alpha) * Wi + alpha * G_trained[i]
-                weights.append(Wi)
+            G_full_trained = load_weights(str(_WEIGHTS_PATH))
+            W_m_init = np.maximum(np.random.randn(p_pixels, 10) * 0.01, 0)
+            W_m = (1 - alpha) * W_m_init + alpha * G_full_trained
         elif use_trained and _weights_available:
-            weights = load_weights(str(_WEIGHTS_PATH))
-            if not isinstance(weights, list): weights = [weights]
+            W_m = load_weights(str(_WEIGHTS_PATH))
+            if W_m.shape != (p_pixels, 10):
+                W_m = np.maximum(np.random.randn(p_pixels, 10) * 0.01, 0)
         else:
-            for i in range(len(l_sizes) - 1):
-                weights.append(np.maximum(np.random.randn(l_sizes[i], l_sizes[i+1]) * 0.01, 0).astype(np.float32))
+            W_m = np.maximum(np.random.randn(p_pixels, 10) * 0.01, 0)
 
-        cbs = []
-        for W in weights:
-            cb = IdealCrossbar(W.shape[0], W.shape[1])
-            cb.set_conductance(W)
-            cbs.append(cb)
-            
-        snn_m = SNNNetwork(
-            layer_sizes=l_sizes,
-            crossbar_runs=[cb.run for cb in cbs],
-            encoder=PoissonEncoder(100.0),
-            timesteps=timesteps
-        )
+        cb_m = IdealCrossbar(p_pixels, 10)
+        cb_m.set_conductance(W_m)
+        snn_m = SNNNetwork(p_pixels, 10, cb_m.run, encoder=PoissonEncoder(100.0), timesteps=timesteps)
 
         # Session Accuracy Cache
         if st.session_state.accuracy is None:
