@@ -1,9 +1,0 @@
-.git
-venv
-.venv
-node_modules
-.vercel
-tests
-docs
-experiments/*.npy
-verilog/vivado_project

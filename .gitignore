@@ -45,8 +45,3 @@ Thumbs.db
 *.log
 logs/
 
-.vercel
-
-# Generated stlite artifacts (use scripts/generate_stlite_files.py to rebuild)
-files.json
-public/
