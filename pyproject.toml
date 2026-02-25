@@ -46,8 +46,8 @@ dev = [
 ]
 
 [project.urls]
-Repository = "https://github.com/your-username/neuro-edge-reram-simulator"
-Documentation = "https://github.com/your-username/neuro-edge-reram-simulator#readme"
+Repository = "https://github.com/anykrver/reram-simulation"
+Documentation = "https://github.com/anykrver/reram-simulation#readme"
 
 [tool.setuptools.packages.find]
 where = ["src"]
